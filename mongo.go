@@ -15,9 +15,9 @@ var (
 	connectionChannel = make(chan bool)
 )
 
+//Exposed for calling go code by capitalizing the first character.
 var (
-	ConnectionChannel = make(chan bool)
-	Connected         = false
+	Connected = false
 )
 
 type MongoSession struct {
@@ -30,46 +30,41 @@ func receiveConnectionStatus() {
 	go func() {
 		for {
 			isConnected := <-connectionChannel
-			fmt.Printf("%b\n", isConnected)
+
 			if isConnected != Connected {
 				fmt.Printf("State changed: %b\n", isConnected)
 			}
 			Connected = isConnected
+
 			if Connected == false {
 				//this only works in a go routine
 				go Initialize(mongouri)
 			}
-			//send to any remote listeners
-			ConnectionChannel <- isConnected
 		}
 	}()
 }
 
-func Initialize(uri string) error {
-	go receiveConnectionStatus()
-
+func Initialize(uri string) {
 	mongouri = uri
 
-	ctl, err := NewMongoSession(mongouri)
+	go receiveConnectionStatus()
 
+	ctl, err := NewMongoSession(mongouri)
 	if err != nil {
 		connectionChannel <- false
-		return err
 	} else {
 		db = ctl.session.Clone().DB("test")
 		connectionChannel <- true
 	}
-	return nil
+	fmt.Println("\nReset to false")
 }
 
 func NewMongoSession(uri string) (*MongoSession, error) {
+	// fmt.Printf("\nWTF\n")
 	session, err := mgo.Dial(uri)
 	if err != nil {
-		connectionChannel <- false
-		go Initialize(mongouri)
 		return nil, err
 	}
-	connectionChannel <- true
 	return &MongoSession{
 		session: session,
 	}, nil
@@ -85,12 +80,13 @@ func LogMessage(collectionName string, key string, message []byte) {
 		//info, err := collection.UpsertId(r.Product, r)
 		info, err := collection.UpsertId(key, m)
 		if err != nil {
-			connectionChannel <- false
 			fmt.Printf("Unable to upsert document:%v\n", err)
+			db.Session.Refresh()
+			connectionChannel <- false
 		} else {
 			fmt.Sprintf("Upserted:", info.UpsertedId)
 		}
 	} else {
-		fmt.Println("\nUnable to write to Mongo")
+		// fmt.Println("No connection")
 	}
 }
