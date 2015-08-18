@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 var (
@@ -73,11 +74,13 @@ func NewMongoSession(uri string) (*MongoSession, error) {
 //move this into caling procedure so as to be able to respect state changes?
 func LogMessage(collectionName string, key string, message []byte) {
 	if Connected == true {
-		collection := db.C(collectionName)
+
 		var m map[string]interface{}
 		err := json.Unmarshal([]byte(message), &m)
+		m["createdAt"] = bson.Now()
 
 		//info, err := collection.UpsertId(r.Product, r)
+		collection := db.C(collectionName)
 		info, err := collection.UpsertId(key, m)
 		if err != nil {
 			fmt.Printf("Unable to upsert document:%v\n", err)
@@ -86,6 +89,18 @@ func LogMessage(collectionName string, key string, message []byte) {
 		} else {
 			fmt.Sprintf("Upserted:", info.UpsertedId)
 		}
+
+		rates_log_collection := db.C("rateslog")
+		err = rates_log_collection.Insert(m)
+		if err != nil {
+			fmt.Printf("Unable to insert document:%v\n", err)
+			db.Session.Refresh()
+			connectionChannel <- false
+		}
+		// else {
+		// 	fmt.Sprintf("Upserted:", info.UpsertedId)
+		// }
+
 	} else {
 		// fmt.Println("No connection")
 	}
